@@ -1,81 +1,96 @@
 
 import streamlit as st
 import pandas as pd
-import unicodedata
-from datetime import datetime
-import os
+from datetime import date
+from unidecode import unidecode
 
+ARQUIVO_TACO = "alimentos.csv"
+ARQUIVO_REGISTRO = "registros.csv"
+
+st.set_page_config(page_title="Registro Alimentar", layout="wide")
+
+# Funções auxiliares
 @st.cache_data
-def carregar_tabela_alimentos():
-    df = pd.read_csv("alimentos.csv", sep=",", quotechar='"')
+def carregar_taco():
+    df = pd.read_csv(ARQUIVO_TACO)
     df["Descrição dos alimentos"] = df["Descrição dos alimentos"].astype(str).str.strip()
     return df
 
-def normalizar(texto):
-    return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8').lower()
+def salvar_taco(df):
+    df.to_csv(ARQUIVO_REGISTRO, index=False)
 
-# Inicialização da sessão
-if "registros" not in st.session_state:
-    st.session_state.registros = []
+def carregar_registros():
+    if Path(ARQUIVO_REGISTRO).exists():
+        return pd.read_csv(ARQUIVO_REGISTRO)
+    return pd.DataFrame(columns=["Data", "Descrição dos alimentos", "Quantidade (g)", "Kcal", "Proteína (g)", "Carboidrato (g)", "Gordura (g)"])
 
-st.title("🍽️ Registro Alimentar")
+def buscar_alimento(descricao, df_taco):
+    descricao = unidecode(descricao.lower())
+    return df_taco[df_taco["Descrição dos alimentos"].apply(lambda x: descricao in unidecode(x.lower()))]
 
-df_alimentos = carregar_tabela_alimentos()
+# Interface
+st.title("Registro Alimentar Diário")
 
-# Entrada do alimento
-nome_alimento = st.text_input("Digite o nome de um alimento:", "")
+df_taco = carregar_taco()
+df = carregar_registros()
 
-# Filtro inteligente
-if nome_alimento:
-    nome_proc = normalizar(nome_alimento)
-    opcoes = df_alimentos[df_alimentos["Descrição dos alimentos"].apply(lambda x: nome_proc in normalizar(x))]
-    lista_alimentos = opcoes["Descrição dos alimentos"].tolist()
-else:
-    lista_alimentos = []
+# Entrada
+st.subheader("Buscar e registrar alimento")
+col1, col2 = st.columns([3, 1])
 
-# Dropdown
-alimento_selecionado = st.selectbox("Selecione o alimento encontrado:", lista_alimentos) if lista_alimentos else None
+with col1:
+    termo_busca = st.text_input("Buscar alimento (ex: arroz integral, feijão, banana)", "")
 
-# Quantidade
-quantidade = st.number_input("Quantidade consumida (em gramas):", min_value=1, step=1)
+with col2:
+    quantidade = st.number_input("Quantidade (g)", min_value=0.0, step=1.0)
 
-# Botão de adicionar
-if st.button("Registrar alimento") and alimento_selecionado:
-    dados = df_alimentos[df_alimentos["Descrição dos alimentos"] == alimento_selecionado].iloc[0]
-    fator = quantidade / 100
-    registro = {
-        "Data": datetime.now().strftime("%Y-%m-%d"),
-        "Alimento": alimento_selecionado,
-        "Quantidade (g)": quantidade,
-        "Kcal": round(dados["Energia..kcal."] * fator, 2),
-        "Proteína (g)": round(dados["Proteína..g."] * fator, 2),
-        "Carboidrato (g)": round(dados["Carboidrato..g."] * fator, 2),
-        "Gordura (g)": round(dados["Lipídeos..g."] * fator, 2),
-    }
-    st.session_state.registros.append(registro)
-    st.success(f"{alimento_selecionado} registrado com sucesso!")
+resultado_busca = buscar_alimento(termo_busca, df_taco) if termo_busca else pd.DataFrame()
 
-# Mostrar registros
+if not resultado_busca.empty:
+    st.dataframe(resultado_busca[["Descrição dos alimentos", "Kcal (100g)", "Proteína (g)", "Carboidrato (g)", "Lipídeos (g)"]].reset_index(drop=True))
+
+    alimento_selecionado = st.selectbox("Selecione o alimento:", resultado_busca["Descrição dos alimentos"].unique())
+
+    if st.button("Adicionar alimento ao dia"):
+        alimento_info = resultado_busca[resultado_busca["Descrição dos alimentos"] == alimento_selecionado].iloc[0]
+
+        nova_entrada = {
+            "Data": str(date.today()),
+            "Descrição dos alimentos": alimento_info["Descrição dos alimentos"],
+            "Quantidade (g)": quantidade,
+            "Kcal": round(alimento_info["Kcal (100g)"] * quantidade / 100, 2),
+            "Proteína (g)": round(alimento_info["Proteína (g)"] * quantidade / 100, 2),
+            "Carboidrato (g)": round(alimento_info["Carboidrato (g)"] * quantidade / 100, 2),
+            "Gordura (g)": round(alimento_info["Lipídeos (g)"] * quantidade / 100, 2)
+        }
+
+        df = pd.concat([df, pd.DataFrame([nova_entrada])], ignore_index=True)
+        salvar_taco(df)
+        st.success("Alimento registrado com sucesso.")
+        st.rerun()
+
+# Exibição dos registros do dia
 st.subheader("Alimentos registrados no dia")
-df_registros = pd.DataFrame(st.session_state.registros)
+hoje = str(date.today())
+df_dia = df[df["Data"] == hoje]
 
-if not df_registros.empty:
-    st.dataframe(df_registros)
-
-    # Exclusão
-    indices_para_remover = st.multiselect("Selecione as linhas para excluir:", df_registros.index.tolist())
-    if st.button("Excluir selecionados"):
-        st.session_state.registros = [reg for i, reg in enumerate(st.session_state.registros) if i not in indices_para_remover]
-        st.success("Itens excluídos.")
-        st.experimental_rerun()
-
-    # Exportar CSV
-    csv = df_registros.to_csv(index=False).encode('utf-8')
-    st.download_button("📤 Exportar CSV", data=csv, file_name="registro_alimentar.csv", mime="text/csv")
-
-    # Totais
-    st.markdown("### Totais do dia")
-    totais = df_registros[["Kcal", "Proteína (g)", "Carboidrato (g)", "Gordura (g)"]].sum().round(2)
-    st.write(totais)
+if df_dia.empty:
+    st.info("Nenhum alimento registrado para hoje.")
 else:
-    st.info("Nenhum alimento registrado ainda.")
+    st.dataframe(df_dia)
+
+    # Exclusão por nome
+    st.markdown("### Selecionar alimentos para excluir:")
+    alimentos_disponiveis = df_dia["Descrição dos alimentos"].unique().tolist()
+    alimentos_para_excluir = st.multiselect("Selecione os alimentos para excluir:", alimentos_disponiveis)
+
+    if st.button("Excluir selecionados") and alimentos_para_excluir:
+        df = df[~((df["Data"] == hoje) & (df["Descrição dos alimentos"].isin(alimentos_para_excluir)))]
+        salvar_taco(df)
+        st.success("Itens excluídos.")
+        st.rerun()
+
+# Exportar registros
+st.subheader("Exportar registros")
+csv = df.to_csv(index=False).encode('utf-8')
+st.download_button("📥 Baixar registros como CSV", data=csv, file_name="registros.csv", mime='text/csv')
