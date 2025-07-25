@@ -9,17 +9,24 @@ def carregar_dados():
 
 taco = carregar_dados()
 
-# Tentativa robusta de localizar a coluna de descrição dos alimentos
+# Detectar o nome da coluna de descrição
 coluna_desc = [col for col in taco.columns if "descrição" in col.lower()][0]
 
 st.title("🍽️ Registro Alimentar")
 
-alimento = st.selectbox("Escolha o alimento:", taco[coluna_desc])
+busca = st.text_input("🔎 Digite o nome do alimento:")
 
-info_alimento = taco[taco[coluna_desc] == alimento]
+if busca:
+    resultados = taco[taco[coluna_desc].str.contains(busca, case=False, na=False)]
 
-if not info_alimento.empty:
-    st.subheader("🔍 Informações Nutricionais por 100g")
-    st.dataframe(info_alimento.transpose(), use_container_width=True)
+    if not resultados.empty:
+        alimento = st.selectbox("Selecione o alimento encontrado:", resultados[coluna_desc].tolist())
+
+        dados = resultados[resultados[coluna_desc] == alimento]
+
+        st.subheader("📊 Informações Nutricionais por 100g")
+        st.dataframe(dados.reset_index(drop=True), use_container_width=True)
+    else:
+        st.warning("Nenhum alimento encontrado com esse nome.")
 else:
-    st.error("Alimento não encontrado.")
+    st.info("Digite o nome de um alimento para buscar.")
