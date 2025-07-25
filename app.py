@@ -1,84 +1,97 @@
 import streamlit as st
 import pandas as pd
+import unicodedata
 from datetime import datetime
 
-st.set_page_config(page_title="Registro Alimentar Diário", page_icon="📒", layout="wide")
+# Função para carregar e processar a tabela de alimentos
+@st.cache_data
+def carregar_tabela_alimentos():
+    df = pd.read_csv("alimentos.csv")
+    df["Alimento"] = df["Descrição dos alimentos"].apply(lambda x: unicodedata.normalize("NFKD", str(x)).encode("ASCII", "ignore").decode("utf-8").lower())
+    df = df[["Alimento", "Energia..kcal.", "Proteína..g.", "Lipídeos..g.", "Carboidrato..g."]]
+    df.columns = ["Alimento", "Kcal", "Proteina", "Gordura", "Carboidrato"]
+    return df
 
+# Função para somar os nutrientes de um DataFrame
+def somar_nutrientes(df):
+    return df[["Kcal", "Proteina", "Gordura", "Carboidrato"]].sum()
+
+# Início da aplicação Streamlit
 st.title("📒 Registro Alimentar Diário")
 
-# Função para formatar a data como DD/MM/AAAA
-def formatar_data(data):
-    return data.strftime("%d/%m/%Y")
+# Carregar base de dados dos alimentos
+df_alimentos = carregar_tabela_alimentos()
 
-# Selecionar data
-data_selecionada = st.date_input("Selecione o dia", value=datetime.today())
+# Sessão de estado para armazenar o consumo do dia
+if "refeicoes" not in st.session_state:
+    st.session_state.refeicoes = {}
 
-# Garantir chave para o dia selecionado
-data_str = data_selecionada.strftime("%Y-%m-%d")
-if "registros" not in st.session_state:
-    st.session_state.registros = {}
+refeicao = st.selectbox("Selecione a refeição", ["Café da manhã", "Almoço", "Jantar", "Lanche"])
 
-if data_str not in st.session_state.registros:
-    st.session_state.registros[data_str] = {}
+# Entrada de alimento
+entrada = st.text_input("Digite o nome do alimento (ex: arroz, feijao, frango):").strip().lower()
 
-# Adicionar alimento
-with st.form(key="formulario"):
-    refeicao = st.selectbox("Refeição", ["Café da manhã", "Almoço", "Jantar", "Lanche"])
-    alimento = st.text_input("Alimento")
-    quantidade = st.number_input("Quantidade (g)", min_value=0.0, step=1.0)
-    kcal = st.number_input("Kcal", min_value=0.0, step=0.1)
-    proteina = st.number_input("Proteína", min_value=0.0, step=0.1)
-    gordura = st.number_input("Gordura", min_value=0.0, step=0.1)
-    carbo = st.number_input("Carboidrato", min_value=0.0, step=0.1)
-    submit = st.form_submit_button("Adicionar alimento")
+# Buscar alimentos contendo o termo digitado
+resultado = df_alimentos[df_alimentos["Alimento"].str.contains(entrada, case=False, na=False)]
 
-    if submit:
-        entrada = {
-            "Alimento": alimento,
-            "Quantidade (g)": quantidade,
-            "Kcal": kcal,
-            "Proteína": proteina,
-            "Gordura": gordura,
-            "Carboidrato": carbo,
-        }
-        if refeicao not in st.session_state.registros[data_str]:
-            st.session_state.registros[data_str][refeicao] = []
-        st.session_state.registros[data_str][refeicao].append(entrada)
-        st.success(f"{alimento} adicionado à refeição {refeicao}")
+if not resultado.empty:
+    opcoes = resultado["Alimento"].unique().tolist()
+    alimento_selecionado = st.selectbox("Selecione o alimento desejado:", opcoes)
+    alimento_escolhido = resultado[resultado["Alimento"] == alimento_selecionado].iloc[0]
+    
+    quantidade = st.number_input("Quantidade consumida (em gramas)", min_value=0.0, value=100.0, step=10.0)
 
-# Mostrar resumo
-st.subheader(f"📅 Resumo de {formatar_data(data_selecionada)}")
+    if st.button("Adicionar alimento"):
+        dados = alimento_escolhido.copy()
+        fator = quantidade / 100.0
+        dados[["Kcal", "Proteina", "Gordura", "Carboidrato"]] *= fator
+        dados["Quantidade (g)"] = quantidade
+        dados["Horário"] = datetime.now().strftime("%H:%M")
 
-dados_dia = st.session_state.registros[data_str]
-for refeicao, alimentos in dados_dia.items():
-    st.markdown(f"### 🍽️ {refeicao}")
-    for i, item in enumerate(alimentos):
-        col1, col2, col3, col4, col5, col6, col7 = st.columns([3, 1, 1, 1, 1, 1, 0.5])
-        col1.write(item["Alimento"])
-        col2.write(item["Quantidade (g)"])
-        col3.write(item["Kcal"])
-        col4.write(item["Proteína"])
-        col5.write(item["Gordura"])
-        col6.write(item["Carboidrato"])
-        if col7.button("❌", key=f"{data_str}-{refeicao}-{i}"):
-            st.session_state.registros[data_str][refeicao].pop(i)
-            st.experimental_rerun()
+        if refeicao not in st.session_state.refeicoes:
+            st.session_state.refeicoes[refeicao] = pd.DataFrame()
 
-# Exportar para CSV
-if st.button("📤 Exportar tudo para CSV"):
-    todos_registros = []
-    for data, refeicoes in st.session_state.registros.items():
-        for refeicao, itens in refeicoes.items():
-            for item in itens:
-                entrada = item.copy()
-                entrada["Data"] = datetime.strptime(data, "%Y-%m-%d").strftime("%d/%m/%Y")
-                entrada["Refeição"] = refeicao
-                todos_registros.append(entrada)
-    df = pd.DataFrame(todos_registros)
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Baixar CSV",
-        data=csv,
-        file_name="registro_alimentar.csv",
-        mime="text/csv",
-    )
+        st.session_state.refeicoes[refeicao] = pd.concat(
+            [st.session_state.refeicoes[refeicao], pd.DataFrame([dados])],
+            ignore_index=True
+        )
+
+# Mostrar resumo do dia
+st.subheader("Resumo do dia")
+
+total_df = pd.DataFrame()
+for refeicao, df in st.session_state.refeicoes.items():
+    if df.empty:
+        continue
+
+    st.markdown(f"🍽️ **{refeicao}**")
+
+    colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato"]
+    colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
+    df_exibir = df[colunas_existentes].copy().reset_index(drop=True)
+
+    for i, row in df_exibir.iterrows():
+        cols = st.columns([5, 2, 2, 2, 2, 2, 1])
+        cols[0].write(row["Alimento"])
+        cols[1].write(f"{row['Quantidade (g)']:.0f}")
+        cols[2].write(f"{row['Kcal']:.2f}")
+        cols[3].write(f"{row['Proteina']:.2f}")
+        cols[4].write(f"{row['Gordura']:.2f}")
+        cols[5].write(f"{row['Carboidrato']:.2f}")
+        if cols[6].button("❌", key=f"{refeicao}_{i}"):
+            st.session_state.refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
+            st.rerun()
+
+    total_df = pd.concat([total_df, df], ignore_index=True)
+
+# Somatório geral
+if not total_df.empty:
+    st.markdown("### Totais do dia")
+    totais = somar_nutrientes(total_df)
+    st.write(f"**Calorias:** {totais['Kcal']:.0f} kcal | **Proteínas:** {totais['Proteina']:.1f} g | **Gorduras:** {totais['Gordura']:.1f} g | **Carboidratos:** {totais['Carboidrato']:.1f} g")
+
+    # Exportar como CSV
+    if st.download_button("📁 Baixar CSV do dia", total_df.to_csv(index=False).encode("utf-8"), file_name="registro_alimentar.csv"):
+        st.success("Exportado com sucesso!")
+else:
+    st.info("Nenhum alimento registrado ainda.")
