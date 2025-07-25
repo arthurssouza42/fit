@@ -1,32 +1,53 @@
 import streamlit as st
 import pandas as pd
+from difflib import get_close_matches
 
-st.set_page_config(page_title="Registro Alimentar", layout="wide")
+# Carregar a tabela TACO
+taco = pd.read_csv("alimentos.csv")
 
-@st.cache_data
-def carregar_dados():
-    return pd.read_csv("alimentos.csv", sep=";")
+# Corrigir nomes de colunas se houver espaços ou caracteres invisíveis
+taco.columns = taco.columns.str.strip()
 
-taco = carregar_dados()
-
-# Detectar o nome da coluna de descrição
-coluna_desc = [col for col in taco.columns if "descrição" in col.lower()][0]
-
+# Interface do app
+st.set_page_config(page_title="Registro Alimentar", layout="centered")
 st.title("🍽️ Registro Alimentar")
 
-busca = st.text_input("🔎 Digite o nome do alimento:")
+# Campo de busca
+busca = st.text_input("Digite o nome de um alimento:")
 
 if busca:
-    resultados = taco[taco[coluna_desc].str.contains(busca, case=False, na=False)]
+    nomes_alimentos = taco["Descrição dos alimentos"].dropna().astype(str).tolist()
+    correspondencias = get_close_matches(busca, nomes_alimentos, n=5, cutoff=0.3)
 
-    if not resultados.empty:
-        alimento = st.selectbox("Selecione o alimento encontrado:", resultados[coluna_desc].tolist())
-
-        dados = resultados[resultados[coluna_desc] == alimento]
-
-        st.subheader("📊 Informações Nutricionais por 100g")
-        st.dataframe(dados.reset_index(drop=True), use_container_width=True)
+    if not correspondencias:
+        st.warning("Nenhum alimento encontrado.")
     else:
-        st.warning("Nenhum alimento encontrado com esse nome.")
-else:
-    st.info("Digite o nome de um alimento para buscar.")
+        alimento_escolhido = st.selectbox("Selecione o alimento encontrado:", correspondencias)
+
+        if alimento_escolhido:
+            dados = taco[taco["Descrição dos alimentos"] == alimento_escolhido].iloc[0]
+
+            st.subheader("📊 Informações Nutricionais por 100g")
+
+            # Mostrar os dados de forma estilizada
+            st.markdown("---")
+
+            def show_row(label, valor, unidade="g"):
+                if pd.isna(valor): return
+                st.markdown(f"""
+                <div style='display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #444;'>
+                    <span style='font-weight: bold;'>{label}</span>
+                    <span>{valor} {unidade}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # Exibição estilo rótulo
+            show_row("Calorias", dados["Energia..kcal."], "kcal")
+            show_row("Carboidratos", dados["Carboidrato..g."], "g")
+            show_row("Açúcares", "-", "g")  # Não disponível na TACO
+            show_row("Proteínas", dados["Proteína..g."], "g")
+            show_row("Gorduras Totais", dados["Lipídeos..g."], "g")
+            show_row("Colesterol", dados["Colesterol..mg."], "mg")
+            show_row("Fibras", dados["Fibra.Alimentar..g."], "g")
+            show_row("Sódio", dados["Sódio..mg."], "mg")
+            show_row("Potássio", dados["Potássio..mg."], "mg")
