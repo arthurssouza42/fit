@@ -1,82 +1,85 @@
 
 import streamlit as st
 import pandas as pd
+import difflib
 from unidecode import unidecode
-from difflib import get_close_matches
-from io import StringIO
 
 st.set_page_config(page_title="Registro Alimentar", layout="wide")
 
-# === Funções auxiliares ===
+# Função utilitária
+def normalizar(texto):
+    return unidecode(str(texto)).lower().strip()
 
+# Carrega a base
 @st.cache_data
-def carregar_dados():
-    df = pd.read_csv("alimentos.csv")
+def carregar_taco():
+    df = pd.read_csv("alimentos.csv", sep=";")
     df.columns = df.columns.str.strip()
-    df["DescriçãoFormatada"] = df["Descrição dos alimentos"].apply(lambda x: unidecode(str(x)).lower())
+    df["Descrição dos alimentos"] = df["Descrição dos alimentos"].astype(str).str.strip()
+    df["normalizado"] = df["Descrição dos alimentos"].apply(normalizar)
     return df
 
-def buscar_alimentos(query, df):
-    query = unidecode(query.lower())
-    resultados = df[df["DescriçãoFormatada"].str.contains(query)]
-    if resultados.empty:
-        similares = get_close_matches(query, df["DescriçãoFormatada"], n=5, cutoff=0.4)
-        resultados = df[df["DescriçãoFormatada"].isin(similares)]
-    return resultados
+taco = carregar_taco()
 
-def calcular_nutrientes(info_nutricional, quantidade):
-    fator = quantidade / 100
-    return info_nutricional * fator
-
-# === App ===
+# Estado inicial
+if "registro_alimentos" not in st.session_state:
+    st.session_state["registro_alimentos"] = []
 
 st.title("🍽️ Registro Alimentar")
-df = carregar_dados()
 
-if "refeicoes" not in st.session_state:
-    st.session_state.refeicoes = {"Café da manhã": [], "Almoço": [], "Jantar": [], "Lanches": []}
+# Campo de busca
+busca = st.text_input("Digite o nome de um alimento:", "")
+resultados = []
 
-nome_busca = st.text_input("Digite o nome de um alimento:")
-resultados = buscar_alimentos(nome_busca, df) if nome_busca else pd.DataFrame()
+if busca:
+    busca_norm = normalizar(busca)
+    similares = difflib.get_close_matches(busca_norm, taco["normalizado"], n=10, cutoff=0.3)
+    resultados = taco[taco["normalizado"].isin(similares)]
 
-if not resultados.empty:
-    selecionado = st.selectbox("Selecione o alimento encontrado:", resultados["Descrição dos alimentos"].tolist())
-    quantidade = st.number_input("Quantidade (em gramas):", min_value=1, max_value=1000, step=10, value=100)
-    refeicao = st.selectbox("Em qual refeição deseja registrar?", list(st.session_state.refeicoes.keys()))
+    if not resultados.empty:
+        nomes = resultados["Descrição dos alimentos"].tolist()
+        alimento_selecionado = st.selectbox("Selecione o alimento encontrado:", nomes)
 
-    if st.button("Registrar alimento"):
-        linha = df[df["Descrição dos alimentos"] == selecionado].iloc[0]
-        info_nutricional = linha[["Energia..kcal.", "Proteína..g.", "Lipídeos..g.", "Carboidrato..g.", "Fibra.Alimentar..g."]].astype(float)
-        valores = calcular_nutrientes(info_nutricional, quantidade)
-        registro = {
-            "Alimento": selecionado,
-            "Quantidade (g)": quantidade,
-            "Calorias (kcal)": valores["Energia..kcal."],
-            "Proteína (g)": valores["Proteína..g."],
-            "Lipídeos (g)": valores["Lipídeos..g."],
-            "Carboidrato (g)": valores["Carboidrato..g."],
-            "Fibra (g)": valores["Fibra.Alimentar..g."]
-        }
-        st.session_state.refeicoes[refeicao].append(registro)
-        st.success(f"{quantidade}g de {selecionado} adicionado à refeição: {refeicao}")
+        if alimento_selecionado:
+            quantidade = st.number_input("Informe a quantidade consumida (em gramas):", min_value=1, value=100)
+            if st.button("Registrar alimento"):
+                registro = {
+                    "alimento": alimento_selecionado,
+                    "quantidade": quantidade
+                }
+                st.session_state["registro_alimentos"].append(registro)
+                st.success(f"{alimento_selecionado} registrado com sucesso!")
 
-# === Mostrar Tabelas ===
+# Exibe alimentos registrados com botão de exclusão
+st.subheader("🍽️ Alimentos registrados no dia")
+if st.session_state["registro_alimentos"]:
+    for i, item in enumerate(st.session_state["registro_alimentos"]):
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            st.markdown(f"**{item['alimento']}** – {item['quantidade']}g")
+        with col2:
+            if st.button("❌", key=f"excluir_{i}"):
+                st.session_state["registro_alimentos"].pop(i)
+                st.experimental_rerun()
+else:
+    st.info("Nenhum alimento registrado ainda.")
 
-st.subheader("📊 Consumo Diário")
-tudo = []
-for nome, itens in st.session_state.refeicoes.items():
-    if itens:
-        st.markdown(f"### 🍴 {nome}")
-        tabela = pd.DataFrame(itens)
-        st.dataframe(tabela, use_container_width=True)
-        tudo.extend(itens)
+# Calcula totais
+st.subheader("📊 Total Nutricional do Dia")
 
-if tudo:
-    df_total = pd.DataFrame(tudo)
-    st.markdown("## ✅ Totais do Dia")
-    totais = df_total.drop(columns=["Alimento", "Quantidade (g)"]).sum().round(2)
-    st.write(totais.to_frame("Total"))
+df_registros = pd.DataFrame(st.session_state["registro_alimentos"])
+if not df_registros.empty:
+    registros = pd.merge(df_registros, taco, left_on="alimento", right_on="Descrição dos alimentos", how="left")
+    fatores = registros["quantidade"] / 100
 
-    # Exportar CSV
-    csv = df_total.to_csv(index=False)
-    st.download_button("📥 Exportar registro do dia (CSV)", csv, file_name="registro_alimentar.csv", mime="text/csv")
+    macros = ["Energia..kcal.", "Proteína..g.", "Carboidrato..g.", "Lipídeos..g."]
+    totais = {col: (registros[col] * fatores).sum() for col in macros}
+
+    st.metric("Calorias totais (kcal)", round(totais["Energia..kcal."], 2))
+    st.metric("Proteína total (g)", round(totais["Proteína..g."], 2))
+    st.metric("Carboidratos totais (g)", round(totais["Carboidrato..g."], 2))
+    st.metric("Gorduras totais (g)", round(totais["Lipídeos..g."], 2))
+
+    # Exportação
+    csv = registros.to_csv(index=False, sep=";")
+    st.download_button("📁 Exportar para CSV", csv, "registro_alimentar.csv", "text/csv")
