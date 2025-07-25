@@ -19,13 +19,13 @@ gord_meta = st.sidebar.number_input("Gorduras (g)", value=70)
 st.title("Registro Alimentar")
 
 # Escolher alimento
-alimento = st.selectbox("Escolha o alimento:", taco["Alimento"])
+alimento = st.selectbox("Escolha o alimento:", taco["Descrição dos alimentos"])
 quantidade = st.number_input("Quantidade (g)", min_value=0.0, step=10.0)
 
 if st.button("Adicionar alimento"):
     if "refeicao" not in st.session_state:
         st.session_state.refeicao = []
-    info = taco[taco["Alimento"] == alimento].iloc[0]
+    info = taco[taco["Descrição dos alimentos"] == alimento].iloc[0]
     fator = quantidade / 100
     entrada = {
         "Alimento": alimento,
