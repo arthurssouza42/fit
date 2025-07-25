@@ -64,13 +64,7 @@ for refeicao, df in st.session_state.refeicoes.items():
     if df.empty:
         continue
 
-    col1, col2 = st.columns([10, 1])
-    with col1:
-        st.markdown(f"🍽️ **{refeicao}**")
-    with col2:
-        if st.button("❌", key=f"excluir_tudo_{refeicao}"):
-            st.session_state.refeicoes[refeicao] = pd.DataFrame()
-            st.rerun()
+    st.markdown(f"🍽️ **{refeicao}**")
 
     colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato"]
     colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
