@@ -32,13 +32,16 @@ refeicao = st.selectbox("Selecione a refeição", ["Café da manhã", "Almoço",
 # Entrada de alimento
 entrada = st.text_input("Digite o nome do alimento (ex: arroz, feijao, frango):").strip().lower()
 
-# Buscar alimento mais próximo
-resultado = df_alimentos[df_alimentos["Alimento"].str.contains(entrada, na=False)]
+# Buscar alimentos contendo o termo digitado
+resultado = df_alimentos[df_alimentos["Alimento"].str.contains(entrada, case=False, na=False)]
 
 if not resultado.empty:
-    alimento_escolhido = resultado.iloc[0]
-    st.write("Resultado encontrado:", alimento_escolhido["Alimento"])
+    opcoes = resultado["Alimento"].unique().tolist()
+    alimento_selecionado = st.selectbox("Selecione o alimento desejado:", opcoes)
+    alimento_escolhido = resultado[resultado["Alimento"] == alimento_selecionado].iloc[0]
+    
     quantidade = st.number_input("Quantidade consumida (em gramas)", min_value=0.0, value=100.0, step=10.0)
+
 
     if st.button("Adicionar alimento"):
         dados = alimento_escolhido.copy()
