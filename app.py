@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import unicodedata
@@ -42,7 +41,6 @@ if not resultado.empty:
     
     quantidade = st.number_input("Quantidade consumida (em gramas)", min_value=0.0, value=100.0, step=10.0)
 
-
     if st.button("Adicionar alimento"):
         dados = alimento_escolhido.copy()
         fator = quantidade / 100.0
@@ -53,7 +51,10 @@ if not resultado.empty:
         if refeicao not in st.session_state.refeicoes:
             st.session_state.refeicoes[refeicao] = pd.DataFrame()
 
-        st.session_state.refeicoes[refeicao] = pd.concat([st.session_state.refeicoes[refeicao], pd.DataFrame([dados])], ignore_index=True)
+        st.session_state.refeicoes[refeicao] = pd.concat(
+            [st.session_state.refeicoes[refeicao], pd.DataFrame([dados])],
+            ignore_index=True
+        )
 
 # Mostrar resumo do dia
 st.subheader("Resumo do dia")
@@ -83,23 +84,9 @@ for refeicao, df in st.session_state.refeicoes.items():
         cols[3].write(f"{row['Proteina']:.2f}")
         cols[4].write(f"{row['Gordura']:.2f}")
         cols[5].write(f"{row['Carboidrato']:.2f}")
-        if cols[6].button("❌", key=f"excluir_{refeicao}_{i}"):
+        if cols[6].button("❌", key=f"{refeicao}_{i}"):
             st.session_state.refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
             st.rerun()
-
-    total_df = pd.concat([total_df, df], ignore_index=True)
-    # Botão X para excluir alimento individual
-    for i in df_exibir.index:
-        cols = st.columns([10, 1])
-        with cols[0]:
-            pass  # Não exibe mais o dicionário
-        with cols[1]:
-            if st.button("❌", key=f"{refeicao}_{i}"):
-                st.session_state.refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
-                st.rerun()
-
-    # Exibe a tabela com os dados nutricionais
-    st.dataframe(df_exibir, use_container_width=True)
 
     total_df = pd.concat([total_df, df], ignore_index=True)
 
