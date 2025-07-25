@@ -63,23 +63,25 @@ for refeicao, df in st.session_state.refeicoes.items():
     if df.empty:
         continue
 
-    # Header da refeição com ícone e título
-    col1, col2 = st.columns([10, 1])
-    with col1:
-        st.write(f"🍽️ **{refeicao}**")
-    with col2:
-        if st.button("❌", key=f"excluir_tudo_{refeicao}"):
-            st.session_state.refeicoes[refeicao] = pd.DataFrame()
-            st.rerun()
+    st.markdown(f"🍽️ **{refeicao}**")
 
     colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato"]
     colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
-    df_exibir = df[colunas_existentes].copy()
+    df_exibir = df[colunas_existentes].copy().reset_index(drop=True)
 
-    st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+    for i, row in df_exibir.iterrows():
+        cols = st.columns([5, 2, 2, 2, 2, 2, 1])
+        cols[0].write(row["Alimento"])
+        cols[1].write(row["Quantidade (g)"])
+        cols[2].write(row["Kcal"])
+        cols[3].write(row["Proteina"])
+        cols[4].write(row["Gordura"])
+        cols[5].write(row["Carboidrato"])
+        if cols[6].button("❌", key=f"excluir_{refeicao}_{i}"):
+            st.session_state.refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
+            st.rerun()
 
     total_df = pd.concat([total_df, df], ignore_index=True)
-
     # Botão X para excluir alimento individual
     for i in df_exibir.index:
         cols = st.columns([10, 1])
