@@ -66,8 +66,8 @@ colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
 df_exibir = df[colunas_existentes]
 st.dataframe(df_exibir, use_container_width=True)
 
-    if st.button(f"Excluir alimentos de {refeicao}"):
-        st.session_state.refeicoes[refeicao] = pd.DataFrame()
+if st.button(f"Excluir alimentos de {refeicao}"):
+    st.session_state.refeicoes[refeicao] = pd.DataFrame()
 
     total_df = pd.concat([total_df, df], ignore_index=True)
 
