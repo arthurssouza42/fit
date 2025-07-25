@@ -70,14 +70,18 @@ for refeicao, df in st.session_state.refeicoes.items():
     colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
     df_exibir = df[colunas_existentes].copy()
 
-    for i, row in df_exibir.iterrows():
-        col1, col2 = st.columns([8, 1])
-        with col1:
-            st.write(f"{row['Alimento']} – {row['Quantidade (g)']}g | {row['Kcal']} kcal")
-        with col2:
+    # Botão X para excluir alimento individual
+    for i in df_exibir.index:
+        cols = st.columns([8, 1])
+        with cols[0]:
+            st.write(df_exibir.loc[i].to_dict())
+        with cols[1]:
             if st.button("❌", key=f"{refeicao}_{i}"):
                 st.session_state.refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
-                st.experimental_rerun()
+                st.rerun()
+
+    # Exibe a tabela completa por refeição (visualmente mais organizado)
+    st.dataframe(df_exibir, use_container_width=True)
 
     total_df = pd.concat([total_df, df], ignore_index=True)
 
