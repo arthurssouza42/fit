@@ -63,7 +63,13 @@ for refeicao, df in st.session_state.refeicoes.items():
     if df.empty:
         continue
 
-    st.markdown(f"🍽️ **{refeicao}**")
+    col1, col2 = st.columns([10, 1])
+    with col1:
+        st.markdown(f"🍽️ **{refeicao}**")
+    with col2:
+        if st.button("❌", key=f"excluir_tudo_{refeicao}"):
+            st.session_state.refeicoes[refeicao] = pd.DataFrame()
+            st.rerun()
 
     colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato"]
     colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
@@ -72,11 +78,11 @@ for refeicao, df in st.session_state.refeicoes.items():
     for i, row in df_exibir.iterrows():
         cols = st.columns([5, 2, 2, 2, 2, 2, 1])
         cols[0].write(row["Alimento"])
-        cols[1].write(row["Quantidade (g)"])
-        cols[2].write(row["Kcal"])
-        cols[3].write(row["Proteina"])
-        cols[4].write(row["Gordura"])
-        cols[5].write(row["Carboidrato"])
+        cols[1].write(f"{row['Quantidade (g)']:.0f}")
+        cols[2].write(f"{row['Kcal']:.2f}")
+        cols[3].write(f"{row['Proteina']:.2f}")
+        cols[4].write(f"{row['Gordura']:.2f}")
+        cols[5].write(f"{row['Carboidrato']:.2f}")
         if cols[6].button("❌", key=f"excluir_{refeicao}_{i}"):
             st.session_state.refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
             st.rerun()
