@@ -66,21 +66,21 @@ for refeicao, df in st.session_state.refeicoes.items():
         st.write("Nenhum alimento registrado.")
         continue
 
-    colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato", "Horário"]
+    colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato"]
     colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
     df_exibir = df[colunas_existentes].copy()
 
     # Botão X para excluir alimento individual
     for i in df_exibir.index:
-        cols = st.columns([8, 1])
+        cols = st.columns([10, 1])
         with cols[0]:
-            st.write(df_exibir.loc[i].to_dict())
+            pass  # Não exibe mais o dicionário
         with cols[1]:
             if st.button("❌", key=f"{refeicao}_{i}"):
                 st.session_state.refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
                 st.rerun()
 
-    # Exibe a tabela completa por refeição (visualmente mais organizado)
+    # Exibe a tabela com os dados nutricionais
     st.dataframe(df_exibir, use_container_width=True)
 
     total_df = pd.concat([total_df, df], ignore_index=True)
