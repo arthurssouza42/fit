@@ -48,7 +48,7 @@ if not resultado.empty:
     quantidade = st.number_input("Quantidade consumida (em gramas)", min_value=0.0, value=100.0, step=10.0)
 
     if st.button("Adicionar alimento"):
-        dados = alimento_eslecionado.copy()
+        dados = alimento_escolhido.copy()
         fator = quantidade / 100.0
         dados[["Kcal", "Proteina", "Gordura", "Carboidrato"]] *= fator
         dados["Quantidade (g)"] = quantidade
