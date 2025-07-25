@@ -60,15 +60,25 @@ st.subheader("Resumo do dia")
 
 total_df = pd.DataFrame()
 for refeicao, df in st.session_state.refeicoes.items():
-    st.write(f"🍽️ **{refeicao}**")
-
     if df.empty:
-        st.write("Nenhum alimento registrado.")
         continue
+
+    # Header da refeição com ícone e título
+    col1, col2 = st.columns([10, 1])
+    with col1:
+        st.write(f"🍽️ **{refeicao}**")
+    with col2:
+        if st.button("❌", key=f"excluir_tudo_{refeicao}"):
+            st.session_state.refeicoes[refeicao] = pd.DataFrame()
+            st.rerun()
 
     colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato"]
     colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
     df_exibir = df[colunas_existentes].copy()
+
+    st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+
+    total_df = pd.concat([total_df, df], ignore_index=True)
 
     # Botão X para excluir alimento individual
     for i in df_exibir.index:
