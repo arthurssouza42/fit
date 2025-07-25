@@ -64,7 +64,7 @@ for refeicao, df in st.session_state.refeicoes.items():
 colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato", "Horário"]
 colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
 df_exibir = df[colunas_existentes]
-    st.dataframe(df_exibir, use_container_width=True)
+st.dataframe(df_exibir, use_container_width=True)
 
     if st.button(f"Excluir alimentos de {refeicao}"):
         st.session_state.refeicoes[refeicao] = pd.DataFrame()
