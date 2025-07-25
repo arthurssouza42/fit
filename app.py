@@ -25,8 +25,8 @@ if "dias" not in st.session_state:
 df_alimentos = carregar_tabela_alimentos()
 
 # Escolha da data
-data_ref = st.date_input("Selecione o dia", value=datetime.today()).strftime("%Y-%m-%d")
-
+data_ref_obj = st.date_input("Selecione o dia", value=datetime.today())
+data_ref = data_ref_obj.strftime("%d/%m/%Y")
 if data_ref not in st.session_state.dias:
     st.session_state.dias[data_ref] = {}
 
