@@ -1,85 +1,81 @@
 
 import streamlit as st
 import pandas as pd
-import difflib
-from unidecode import unidecode
+import unicodedata
+from datetime import datetime
+import os
 
-st.set_page_config(page_title="Registro Alimentar", layout="wide")
-
-# Função utilitária
-def normalizar(texto):
-    return unidecode(str(texto)).lower().strip()
-
-# Carrega a base
 @st.cache_data
-def carregar_taco():
-    df = pd.read_csv("alimentos.csv", sep=";")
-    df.columns = df.columns.str.strip()
+def carregar_tabela_alimentos():
+    df = pd.read_csv("alimentos.csv", sep=",", quotechar='"')
     df["Descrição dos alimentos"] = df["Descrição dos alimentos"].astype(str).str.strip()
-    df["normalizado"] = df["Descrição dos alimentos"].apply(normalizar)
     return df
 
-taco = carregar_taco()
+def normalizar(texto):
+    return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8').lower()
 
-# Estado inicial
-if "registro_alimentos" not in st.session_state:
-    st.session_state["registro_alimentos"] = []
+# Inicialização da sessão
+if "registros" not in st.session_state:
+    st.session_state.registros = []
 
 st.title("🍽️ Registro Alimentar")
 
-# Campo de busca
-busca = st.text_input("Digite o nome de um alimento:", "")
-resultados = []
+df_alimentos = carregar_tabela_alimentos()
 
-if busca:
-    busca_norm = normalizar(busca)
-    similares = difflib.get_close_matches(busca_norm, taco["normalizado"], n=10, cutoff=0.3)
-    resultados = taco[taco["normalizado"].isin(similares)]
+# Entrada do alimento
+nome_alimento = st.text_input("Digite o nome de um alimento:", "")
 
-    if not resultados.empty:
-        nomes = resultados["Descrição dos alimentos"].tolist()
-        alimento_selecionado = st.selectbox("Selecione o alimento encontrado:", nomes)
+# Filtro inteligente
+if nome_alimento:
+    nome_proc = normalizar(nome_alimento)
+    opcoes = df_alimentos[df_alimentos["Descrição dos alimentos"].apply(lambda x: nome_proc in normalizar(x))]
+    lista_alimentos = opcoes["Descrição dos alimentos"].tolist()
+else:
+    lista_alimentos = []
 
-        if alimento_selecionado:
-            quantidade = st.number_input("Informe a quantidade consumida (em gramas):", min_value=1, value=100)
-            if st.button("Registrar alimento"):
-                registro = {
-                    "alimento": alimento_selecionado,
-                    "quantidade": quantidade
-                }
-                st.session_state["registro_alimentos"].append(registro)
-                st.success(f"{alimento_selecionado} registrado com sucesso!")
+# Dropdown
+alimento_selecionado = st.selectbox("Selecione o alimento encontrado:", lista_alimentos) if lista_alimentos else None
 
-# Exibe alimentos registrados com botão de exclusão
-st.subheader("🍽️ Alimentos registrados no dia")
-if st.session_state["registro_alimentos"]:
-    for i, item in enumerate(st.session_state["registro_alimentos"]):
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            st.markdown(f"**{item['alimento']}** – {item['quantidade']}g")
-        with col2:
-            if st.button("❌", key=f"excluir_{i}"):
-                st.session_state["registro_alimentos"].pop(i)
-                st.experimental_rerun()
+# Quantidade
+quantidade = st.number_input("Quantidade consumida (em gramas):", min_value=1, step=1)
+
+# Botão de adicionar
+if st.button("Registrar alimento") and alimento_selecionado:
+    dados = df_alimentos[df_alimentos["Descrição dos alimentos"] == alimento_selecionado].iloc[0]
+    fator = quantidade / 100
+    registro = {
+        "Data": datetime.now().strftime("%Y-%m-%d"),
+        "Alimento": alimento_selecionado,
+        "Quantidade (g)": quantidade,
+        "Kcal": round(dados["Energia..kcal."] * fator, 2),
+        "Proteína (g)": round(dados["Proteína..g."] * fator, 2),
+        "Carboidrato (g)": round(dados["Carboidrato..g."] * fator, 2),
+        "Gordura (g)": round(dados["Lipídeos..g."] * fator, 2),
+    }
+    st.session_state.registros.append(registro)
+    st.success(f"{alimento_selecionado} registrado com sucesso!")
+
+# Mostrar registros
+st.subheader("Alimentos registrados no dia")
+df_registros = pd.DataFrame(st.session_state.registros)
+
+if not df_registros.empty:
+    st.dataframe(df_registros)
+
+    # Exclusão
+    indices_para_remover = st.multiselect("Selecione as linhas para excluir:", df_registros.index.tolist())
+    if st.button("Excluir selecionados"):
+        st.session_state.registros = [reg for i, reg in enumerate(st.session_state.registros) if i not in indices_para_remover]
+        st.success("Itens excluídos.")
+        st.experimental_rerun()
+
+    # Exportar CSV
+    csv = df_registros.to_csv(index=False).encode('utf-8')
+    st.download_button("📤 Exportar CSV", data=csv, file_name="registro_alimentar.csv", mime="text/csv")
+
+    # Totais
+    st.markdown("### Totais do dia")
+    totais = df_registros[["Kcal", "Proteína (g)", "Carboidrato (g)", "Gordura (g)"]].sum().round(2)
+    st.write(totais)
 else:
     st.info("Nenhum alimento registrado ainda.")
-
-# Calcula totais
-st.subheader("📊 Total Nutricional do Dia")
-
-df_registros = pd.DataFrame(st.session_state["registro_alimentos"])
-if not df_registros.empty:
-    registros = pd.merge(df_registros, taco, left_on="alimento", right_on="Descrição dos alimentos", how="left")
-    fatores = registros["quantidade"] / 100
-
-    macros = ["Energia..kcal.", "Proteína..g.", "Carboidrato..g.", "Lipídeos..g."]
-    totais = {col: (registros[col] * fatores).sum() for col in macros}
-
-    st.metric("Calorias totais (kcal)", round(totais["Energia..kcal."], 2))
-    st.metric("Proteína total (g)", round(totais["Proteína..g."], 2))
-    st.metric("Carboidratos totais (g)", round(totais["Carboidrato..g."], 2))
-    st.metric("Gorduras totais (g)", round(totais["Lipídeos..g."], 2))
-
-    # Exportação
-    csv = registros.to_csv(index=False, sep=";")
-    st.download_button("📁 Exportar para CSV", csv, "registro_alimentar.csv", "text/csv")
