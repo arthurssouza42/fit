@@ -1,96 +1,79 @@
 
 import streamlit as st
 import pandas as pd
-from pathlib import Path
-from unidecode import unidecode
+import unicodedata
+from datetime import datetime
 
-# Caminhos dos arquivos
-ARQUIVO_ALIMENTOS = "alimentos.csv"
-ARQUIVO_REGISTRO = "registros.csv"
-
-# ---------------- FUNÇÕES AUXILIARES ----------------
-
+# Função para carregar e processar a tabela de alimentos
 @st.cache_data
 def carregar_tabela_alimentos():
-    df = pd.read_csv(ARQUIVO_ALIMENTOS)
-    df['Alimento'] = df['Descrição'].apply(lambda x: unidecode(x).lower())
+    df = pd.read_csv("alimentos.csv")
+    df["Alimento"] = df["Descrição dos alimentos"].apply(lambda x: unicodedata.normalize("NFKD", str(x)).encode("ASCII", "ignore").decode("utf-8").lower())
+    df = df[["Alimento", "Energia..kcal.", "Proteína..g.", "Lipídeos..g.", "Carboidrato..g."]]
+    df.columns = ["Alimento", "Kcal", "Proteina", "Gordura", "Carboidrato"]
     return df
 
-def carregar_registros():
-    if Path(ARQUIVO_REGISTRO).exists():
-        return pd.read_csv(ARQUIVO_REGISTRO)
-    return pd.DataFrame(columns=["Data", "Alimento", "Quantidade (g)", "Kcal", "Proteína (g)", "Carboidrato (g)", "Gordura (g)"])
+# Função para somar os nutrientes de um DataFrame
+def somar_nutrientes(df):
+    return df[["Kcal", "Proteina", "Gordura", "Carboidrato"]].sum()
 
-def salvar_registros(df):
-    df.to_csv(ARQUIVO_REGISTRO, index=False)
+# Início da aplicação Streamlit
+st.title("📒 Registro Alimentar Diário")
 
-def buscar_alimentos(texto, df_alimentos):
-    texto = unidecode(texto).lower()
-    return df_alimentos[df_alimentos['Alimento'].str.contains(texto)]
-
-# ---------------- INTERFACE STREAMLIT ----------------
-
-st.set_page_config(page_title="Registro Alimentar", layout="wide")
-st.title("📋 Registro Alimentar Diário")
-
-# Entrada do alimento
+# Carregar base de dados dos alimentos
 df_alimentos = carregar_tabela_alimentos()
-df_registro = carregar_registros()
 
-with st.form("form_alimento"):
-    col1, col2, col3 = st.columns([3, 1, 1])
-    with col1:
-        nome_input = st.text_input("Buscar alimento", "")
-    resultados = buscar_alimentos(nome_input, df_alimentos)
-    alimento_selecionado = None
-    if not resultados.empty:
-        alimento_selecionado = st.selectbox("Selecione o alimento:", resultados["Descrição"].values)
-    with col2:
-        quantidade = st.number_input("Quantidade (g)", min_value=0.0, step=10.0)
-    with col3:
-        data = st.date_input("Data", pd.Timestamp.today())
+# Sessão de estado para armazenar o consumo do dia
+if "refeicoes" not in st.session_state:
+    st.session_state.refeicoes = {}
 
-    submitted = st.form_submit_button("Adicionar alimento")
+refeicao = st.selectbox("Selecione a refeição", ["Café da manhã", "Almoço", "Jantar", "Lanche"])
 
-if submitted and alimento_selecionado:
-    info = df_alimentos[df_alimentos["Descrição"] == alimento_selecionado].iloc[0]
-    fator = quantidade / 100
-    nova_linha = {
-        "Data": data.strftime("%Y-%m-%d"),
-        "Alimento": alimento_selecionado,
-        "Quantidade (g)": quantidade,
-        "Kcal": round(info["Energia (kcal)"] * fator, 1),
-        "Proteína (g)": round(info["Proteína (g)"] * fator, 2),
-        "Carboidrato (g)": round(info["Carboidrato (g)"] * fator, 2),
-        "Gordura (g)": round(info["Lipídeos (g)"] * fator, 2)
-    }
-    df_registro = pd.concat([df_registro, pd.DataFrame([nova_linha])], ignore_index=True)
-    salvar_registros(df_registro)
-    st.success("Alimento registrado com sucesso!")
-    st.rerun()
+# Entrada de alimento
+entrada = st.text_input("Digite o nome do alimento (ex: arroz, feijao, frango):").strip().lower()
 
-# ---------------- REGISTROS EXISTENTES ----------------
+# Buscar alimento mais próximo
+resultado = df_alimentos[df_alimentos["Alimento"].str.contains(entrada, na=False)]
 
-st.subheader("📆 Alimentos registrados no dia")
-df_registro_filtrado = df_registro[df_registro["Data"] == pd.Timestamp.today().strftime("%Y-%m-%d")]
-st.dataframe(df_registro_filtrado)
+if not resultado.empty:
+    alimento_escolhido = resultado.iloc[0]
+    st.write("Resultado encontrado:", alimento_escolhido["Alimento"])
+    quantidade = st.number_input("Quantidade consumida (em gramas)", min_value=0.0, value=100.0, step=10.0)
 
-# Exclusão
-st.subheader("🗑️ Remover alimento registrado")
-nomes_unicos = df_registro_filtrado["Alimento"].unique().tolist()
-selecionado = st.multiselect("Selecione os alimentos para excluir:", nomes_unicos)
+    if st.button("Adicionar alimento"):
+        dados = alimento_escolhido.copy()
+        fator = quantidade / 100.0
+        dados[["Kcal", "Proteina", "Gordura", "Carboidrato"]] *= fator
+        dados["Quantidade (g)"] = quantidade
+        dados["Horário"] = datetime.now().strftime("%H:%M")
 
-if st.button("Excluir selecionados") and selecionado:
-    df_registro = df_registro[~((df_registro["Data"] == pd.Timestamp.today().strftime("%Y-%m-%d")) &
-                                (df_registro["Alimento"].isin(selecionado)))]
-    salvar_registros(df_registro)
-    st.success("Itens excluídos.")
-    st.rerun()
+        if refeicao not in st.session_state.refeicoes:
+            st.session_state.refeicoes[refeicao] = pd.DataFrame()
 
-# Exportar
-st.download_button(
-    label="📥 Exportar todos os registros para CSV",
-    data=df_registro.to_csv(index=False).encode("utf-8"),
-    file_name="registros.csv",
-    mime="text/csv"
-)
+        st.session_state.refeicoes[refeicao] = pd.concat([st.session_state.refeicoes[refeicao], pd.DataFrame([dados])], ignore_index=True)
+
+# Mostrar resumo do dia
+st.subheader("Resumo do dia")
+
+total_df = pd.DataFrame()
+for refeicao, df in st.session_state.refeicoes.items():
+    st.write(f"🍽️ **{refeicao}**")
+    df_exibir = df[["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato", "Horário"]]
+    st.dataframe(df_exibir, use_container_width=True)
+
+    if st.button(f"Excluir alimentos de {refeicao}"):
+        st.session_state.refeicoes[refeicao] = pd.DataFrame()
+
+    total_df = pd.concat([total_df, df], ignore_index=True)
+
+# Somatório geral
+if not total_df.empty:
+    st.markdown("### Totais do dia")
+    totais = somar_nutrientes(total_df)
+    st.write(f"**Calorias:** {totais['Kcal']:.0f} kcal | **Proteínas:** {totais['Proteina']:.1f} g | **Gorduras:** {totais['Gordura']:.1f} g | **Carboidratos:** {totais['Carboidrato']:.1f} g")
+
+    # Exportar como CSV
+    if st.download_button("📁 Baixar CSV do dia", total_df.to_csv(index=False).encode("utf-8"), file_name="registro_alimentar.csv"):
+        st.success("Exportado com sucesso!")
+else:
+    st.info("Nenhum alimento registrado ainda.")
