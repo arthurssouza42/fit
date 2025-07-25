@@ -61,13 +61,23 @@ st.subheader("Resumo do dia")
 total_df = pd.DataFrame()
 for refeicao, df in st.session_state.refeicoes.items():
     st.write(f"🍽️ **{refeicao}**")
-colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato", "Horário"]
-colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
-df_exibir = df[colunas_existentes]
-st.dataframe(df_exibir, use_container_width=True)
 
-if st.button(f"Excluir alimentos de {refeicao}"):
-    st.session_state.refeicoes[refeicao] = pd.DataFrame()
+    if df.empty:
+        st.write("Nenhum alimento registrado.")
+        continue
+
+    colunas_desejadas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato", "Horário"]
+    colunas_existentes = [col for col in colunas_desejadas if col in df.columns]
+    df_exibir = df[colunas_existentes].copy()
+
+    for i, row in df_exibir.iterrows():
+        col1, col2 = st.columns([8, 1])
+        with col1:
+            st.write(f"{row['Alimento']} – {row['Quantidade (g)']}g | {row['Kcal']} kcal")
+        with col2:
+            if st.button("❌", key=f"{refeicao}_{i}"):
+                st.session_state.refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
+                st.experimental_rerun()
 
     total_df = pd.concat([total_df, df], ignore_index=True)
 
