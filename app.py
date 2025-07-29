@@ -8,7 +8,8 @@ st.set_page_config(layout="wide")
 def carregar_tabela_alimentos():
     df = pd.read_csv("alimentos.csv", sep=";")
 
-    # Padronizar nomes de colunas
+    # Padronizar nomes
+    colunas_originais = df.columns.tolist()
     df.columns = (
         df.columns.str.strip()
         .str.lower()
@@ -26,18 +27,29 @@ def carregar_tabela_alimentos():
         .str.replace(" ", "")
     )
 
-    # Renomear para nomes-padrão usados no app
-    df = df.rename(
-        columns={
-            "alimento": "Alimento",
-            "energiakcal": "kcal",
-            "proteina": "Proteína",
-            "lipideos": "Gordura",
-            "carboidrato": "Carboidrato",
-        }
-    )
+    # Mapeamento inteligente
+    mapping = {}
+    for col in df.columns:
+        if "alimento" in col:
+            mapping[col] = "Alimento"
+        elif "kcal" in col or "energia" in col:
+            mapping[col] = "kcal"
+        elif "proteina" in col:
+            mapping[col] = "Proteína"
+        elif "lipideo" in col or "gordura" in col:
+            mapping[col] = "Gordura"
+        elif "carboidrato" in col:
+            mapping[col] = "Carboidrato"
 
-    return df[["Alimento", "kcal", "Proteína", "Gordura", "Carboidrato"]]
+    df = df.rename(columns=mapping)
+
+    # Verificação de colunas obrigatórias
+    colunas_necessarias = ["Alimento", "kcal", "Proteína", "Gordura", "Carboidrato"]
+    faltando = [c for c in colunas_necessarias if c not in df.columns]
+    if faltando:
+        raise ValueError(f"⚠️ As seguintes colunas obrigatórias não foram encontradas na base de dados: {faltando}")
+
+    return df[colunas_necessarias]
 
 df_alimentos = carregar_tabela_alimentos()
 
