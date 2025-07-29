@@ -51,6 +51,14 @@ def carregar_tabela_alimentos():
 
     return df[colunas_necessarias]
 
+    # Verificação de colunas obrigatórias
+    colunas_necessarias = ["Alimento", "kcal", "Proteína", "Gordura", "Carboidrato"]
+    faltando = [c for c in colunas_necessarias if c not in df.columns]
+    if faltando:
+        raise ValueError(f"⚠️ As seguintes colunas obrigatórias não foram encontradas na base de dados: {faltando}")
+
+    return df[colunas_necessarias]
+
 df_alimentos = carregar_tabela_alimentos()
 
 st.title("📊 Registro de refeições")
