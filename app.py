@@ -5,8 +5,25 @@ from datetime import datetime
 @st.cache_data
 def carregar_tabela_alimentos():
     df = pd.read_csv("alimentos.csv", sep=";")
-    df = df[["Alimento", "Energia.kcal.", "Proteína.g.", "Lipídeos.g.", "Carboidrato.g."]]
-    df.columns = ["Alimento", "kcal", "Proteína", "Gordura", "Carboidrato"]
+    
+    # Padronizar nomes das colunas
+    df.columns = df.columns.str.strip().str.lower()
+
+    # Renomear conforme esperado no app
+    renomear = {
+        "alimento": "Alimento",
+        "energia.kcal.": "kcal",
+        "proteína.g.": "Proteína",
+        "proteina.g.": "Proteína",
+        "lipídeos.g.": "Gordura",
+        "lipideos.g.": "Gordura",
+        "carboidrato.g.": "Carboidrato"
+    }
+    df = df.rename(columns=renomear)
+
+    # Selecionar e reordenar colunas
+    df = df[["Alimento", "kcal", "Proteína", "Gordura", "Carboidrato"]]
+
     return df
 
 df_alimentos = carregar_tabela_alimentos()
