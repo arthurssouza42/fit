@@ -5,23 +5,37 @@ from datetime import datetime
 @st.cache_data
 def carregar_tabela_alimentos():
     df = pd.read_csv("alimentos.csv", sep=";")
-    
-    # Padronizar nomes das colunas
-    df.columns = df.columns.str.strip().str.lower()
 
-    # Renomear conforme esperado no app
-    renomear = {
-        "alimento": "Alimento",
-        "energia.kcal.": "kcal",
-        "proteína.g.": "Proteína",
-        "proteina.g.": "Proteína",
-        "lipídeos.g.": "Gordura",
-        "lipideos.g.": "Gordura",
-        "carboidrato.g.": "Carboidrato"
-    }
-    df = df.rename(columns=renomear)
+    # Padronizar colunas: minúsculas, sem espaços e sem acentos
+    df.columns = (
+        df.columns.str.strip()
+        .str.lower()
+        .str.replace("á", "a")
+        .str.replace("ã", "a")
+        .str.replace("â", "a")
+        .str.replace("é", "e")
+        .str.replace("ê", "e")
+        .str.replace("í", "i")
+        .str.replace("ó", "o")
+        .str.replace("ô", "o")
+        .str.replace("ú", "u")
+        .str.replace("ç", "c")
+        .str.replace(".", "")
+        .str.replace(" ", "")
+    )
 
-    # Selecionar e reordenar colunas
+    # Renomear para nomes-padrão usados no sistema
+    df = df.rename(
+        columns={
+            "alimento": "Alimento",
+            "energiakcal": "kcal",
+            "proteina": "Proteína",
+            "lipideos": "Gordura",
+            "carboidrato": "Carboidrato",
+        }
+    )
+
+    # Retornar só as colunas esperadas
     df = df[["Alimento", "kcal", "Proteína", "Gordura", "Carboidrato"]]
 
     return df
