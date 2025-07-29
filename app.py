@@ -73,7 +73,17 @@ for refeicao, df in refeicoes.items():
     if df.empty:
         continue
 
-    st.markdown(f"🍽️ **{refeicao}**")
+    # Calcular totais parciais
+    totais_parciais = somar_nutrientes(df)
+    resumo_macros = (
+        f"**Calorias:** {totais_parciais['Kcal']:.0f} kcal | "
+        f"**Proteínas:** {totais_parciais['Proteina']:.1f} g | "
+        f"**Gorduras:** {totais_parciais['Gordura']:.1f} g | "
+        f"**Carboidratos:** {totais_parciais['Carboidrato']:.1f} g"
+    )
+
+    # Título da refeição + resumo parcial
+    st.markdown(f"🍽️ **{refeicao}**\n\n{resumo_macros}")
 
     colunas = ["Alimento", "Quantidade (g)", "Kcal", "Proteina", "Gordura", "Carboidrato"]
     df_exibir = df[colunas].copy().reset_index(drop=True)
