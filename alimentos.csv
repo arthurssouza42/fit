@@ -1,4 +1,4 @@
-Número do Alimento,Categoria do alimento,Descrição dos alimentos,Umidade....,Energia..kcal.,Energia..kJ.,Proteína..g.,Lipídeos..g.,Colesterol..mg.,Carboidrato..g.,Fibra.Alimentar..g.,Cinzas..g.,Cálcio..mg.,Magnésio..mg.,Manganês..mg.,Fósforo..mg.,Ferro..mg.,Sódio..mg.,Potássio..mg.,Cobre..mg.,Zinco..mg.,Retinol..mcg.,RE..mcg.,RAE..mcg.,Tiamina..mg.,Riboflavina..mg.,Piridoxina..mg.,Niacina..mg.,Vitamina.C..mg.
+Número do Alimento,Categoria do alimento,alimentos,Umidade....,kcal,Energia..kJ.,Proteína,Gordura,Colesterol..mg.,Carboidrato,Fibra.Alimentar..g.,Cinzas..g.,Cálcio..mg.,Magnésio..mg.,Manganês..mg.,Fósforo..mg.,Ferro..mg.,Sódio..mg.,Potássio..mg.,Cobre..mg.,Zinco..mg.,Retinol..mcg.,RE..mcg.,RAE..mcg.,Tiamina..mg.,Riboflavina..mg.,Piridoxina..mg.,Niacina..mg.,Vitamina.C..mg.
 ,,Arroz branco,,128.0,,2.52,0.22,,28.06,,,,,,,,,,,,,,,,,,,
 ,,Feijão preto,,77.0,,4.5,0.5,,14.0,,,,,,,,,,,,,,,,,,,
 ,,Feijão carioca,,76.0,,4.9,0.5,,13.6,,,,,,,,,,,,,,,,,,,
