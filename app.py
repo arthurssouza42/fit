@@ -137,7 +137,7 @@ if not resultado.empty:
             porcoes = quantidade / gramas_por_porcao if gramas_por_porcao else None
         else:
             porcoes = st.number_input(
-                "Quantidade consumida (porções)",
+                f"Porções ({gramas_por_porcao:g} g)",
                 min_value=0.0,
                 value=1.0,
                 step=0.5,
