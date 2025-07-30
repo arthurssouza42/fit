@@ -51,6 +51,41 @@ def carregar_tabela_alimentos(csv_path: str = "alimentos.csv", file_mtime: float
 def somar_nutrientes(df):
     return df[["Kcal", "Proteina", "Gordura", "Carboidrato"]].sum()
 
+# Caminho para armazenar os registros permanentemente
+REGISTRO_PATH = "registros.csv"
+
+
+def carregar_registros(path: str = REGISTRO_PATH) -> dict:
+    """Carrega registros salvos em disco para o formato usado em sessao."""
+    if not os.path.exists(path):
+        return {}
+
+    df = pd.read_csv(path)
+    registros: dict[str, dict[str, pd.DataFrame]] = {}
+    for (dia, refeicao), grupo in df.groupby(["Data", "Refeicao"]):
+        grupo = grupo.drop(columns=["Data", "Refeicao"]).reset_index(drop=True)
+        registros.setdefault(dia, {})[refeicao] = grupo
+    return registros
+
+
+def salvar_registros(registros: dict[str, dict[str, pd.DataFrame]], path: str = REGISTRO_PATH) -> None:
+    """Salva todos os registros da sessao em disco."""
+    df_export = pd.DataFrame()
+    for dia, dados_refeicoes in registros.items():
+        for refeicao, df in dados_refeicoes.items():
+            if df.empty:
+                continue
+            df_temp = df.copy()
+            df_temp["Data"] = dia
+            df_temp["Refeicao"] = refeicao
+            df_export = pd.concat([df_export, df_temp], ignore_index=True)
+
+    if df_export.empty:
+        if os.path.exists(path):
+            os.remove(path)
+    else:
+        df_export.to_csv(path, index=False)
+        
 # Início do app
 st.title("📒 Registro Alimentar Diário")
 
@@ -62,7 +97,7 @@ data_str = data_input.strftime("%d/%m/%Y")
 
 # Inicializar sessão por data
 if "refeicoes_por_dia" not in st.session_state:
-    st.session_state.refeicoes_por_dia = {}
+    st.session_state.refeicoes_por_dia = carregar_registros()
 
 if data_str not in st.session_state.refeicoes_por_dia:
     st.session_state.refeicoes_por_dia[data_str] = {}
@@ -133,6 +168,7 @@ if not resultado.empty:
             [refeicoes[refeicao], pd.DataFrame([dados])],
             ignore_index=True
         )
+        salvar_registros(st.session_state.refeicoes_por_dia)
         st.rerun()
 
 # Mostrar resumo
