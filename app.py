@@ -2,11 +2,25 @@ import streamlit as st
 import pandas as pd
 import unicodedata
 from datetime import datetime
+import os
 
 # Função para carregar e processar a tabela de alimentos
-@st.cache_data
-def carregar_tabela_alimentos():
-    df = pd.read_csv("alimentos.csv")
+@st.cache_data(ttl=3600)
+def carregar_tabela_alimentos(csv_path: str = "alimentos.csv", file_mtime: float | None = None):
+    """Carrega a tabela de alimentos.
+
+    Parameters
+    ----------
+    csv_path: str
+        Caminho para o arquivo CSV.
+    file_mtime: float | None
+        Momento de modificação do arquivo. Usado para invalidar o cache
+        caso o arquivo seja atualizado.
+    """
+    if file_mtime is None:
+        file_mtime = os.path.getmtime(csv_path)
+
+    df = pd.read_csv(csv_path)
     df["Alimento"] = df["Descrição dos alimentos"].apply(
         lambda x: unicodedata.normalize("NFKD", str(x))
         .encode("ASCII", "ignore")
@@ -54,7 +68,8 @@ if data_str not in st.session_state.refeicoes_por_dia:
 refeicoes = st.session_state.refeicoes_por_dia[data_str]
 
 # Carregar base de dados
-df_alimentos = carregar_tabela_alimentos()
+csv_path = "alimentos.csv"
+df_alimentos = carregar_tabela_alimentos(csv_path, os.path.getmtime(csv_path))
 
 refeicao = st.selectbox("Selecione a refeição", ["Café da manhã", "Almoço", "Jantar", "Lanche"])
 entrada = st.text_input("Digite o nome do alimento (ex: arroz, feijao, frango):").strip().lower()
