@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import unicodedata
+import os
 from datetime import datetime
 
 # Função para carregar e processar a tabela de alimentos
@@ -16,6 +17,32 @@ def carregar_tabela_alimentos():
 def somar_nutrientes(df):
     return df[["Kcal", "Proteina", "Gordura", "Carboidrato"]].sum()
 
+
+def carregar_registros(caminho="registros.csv"):
+    """Carrega registros previamente salvos."""
+    dados_por_dia = {}
+    if os.path.exists(caminho):
+        df = pd.read_csv(caminho)
+        if not df.empty:
+            for (dia, refeicao), grupo in df.groupby(["Data", "Refeicao"]):
+                if dia not in dados_por_dia:
+                    dados_por_dia[dia] = {}
+                dados_por_dia[dia][refeicao] = grupo.reset_index(drop=True)
+    return dados_por_dia
+
+
+def salvar_registros(refeicoes_por_dia, caminho="registros.csv"):
+    """Salva todos os registros em arquivo CSV."""
+    df_export = pd.DataFrame()
+    for dia, dados_refeicoes in refeicoes_por_dia.items():
+        for refeicao, df in dados_refeicoes.items():
+            if not df.empty:
+                df_temp = df.copy()
+                df_temp["Data"] = dia
+                df_temp["Refeicao"] = refeicao
+                df_export = pd.concat([df_export, df_temp], ignore_index=True)
+    df_export.to_csv(caminho, index=False)
+    
 # Início do app
 st.title("📒 Registro Alimentar Diário")
 
@@ -25,7 +52,7 @@ data_str = data_input.strftime("%d/%m/%Y")
 
 # Inicializar sessão por data
 if "refeicoes_por_dia" not in st.session_state:
-    st.session_state.refeicoes_por_dia = {}
+    st.session_state.refeicoes_por_dia = carregar_registros()
 
 if data_str not in st.session_state.refeicoes_por_dia:
     st.session_state.refeicoes_por_dia[data_str] = {}
@@ -64,6 +91,7 @@ if not resultado.empty:
             [refeicoes[refeicao], pd.DataFrame([dados])],
             ignore_index=True
         )
+        salvar_registros(st.session_state.refeicoes_por_dia)
         st.rerun()
 
 # Mostrar resumo
@@ -99,6 +127,7 @@ for refeicao, df in refeicoes.items():
         cols[5].write(f"{row['Carboidrato']:.2f}")
         if cols[6].button("❌", key=f"{data_str}_{refeicao}_{i}"):
             refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
+            salvar_registros(st.session_state.refeicoes_por_dia)
             st.rerun()
 
     total_df = pd.concat([total_df, df], ignore_index=True)
@@ -113,7 +142,8 @@ if not total_df.empty:
 st.subheader("📦 Exportar todos os registros")
 
 df_export = pd.DataFrame()
-for dia, dados_refeicoes in st.session_state.refeicoes_por_dia.items():
+registros = carregar_registros()
+for dia, dados_refeicoes in registros.items():
     for refeicao, df in dados_refeicoes.items():
         if not df.empty:
             df_temp = df.copy()
