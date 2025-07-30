@@ -54,8 +54,10 @@ def somar_nutrientes(df):
 # Início do app
 st.title("📒 Registro Alimentar Diário")
 
-# Data no formato DD/MM/AAAA
-data_input = st.date_input("Selecione a data:", format="DD/MM/YYYY")
+# Data no formato DD/MM/AAAA em um campo mais compacto
+col_data, _ = st.columns([1, 5])
+with col_data:
+    data_input = st.date_input("Data", format="DD/MM/YYYY")
 data_str = data_input.strftime("%d/%m/%Y")
 
 # Inicializar sessão por data
@@ -167,7 +169,7 @@ for refeicao, df in refeicoes.items():
     df_exibir = df[colunas].copy().reset_index(drop=True)
 
     for i, row in df_exibir.iterrows():
-        cols = st.columns([5, 2, 2, 2, 2, 2, 2, 1])
+        cols = st.columns([5, 2, 2, 2, 2, 2, 2, 0.5])
         cols[0].write(row["Alimento"])
         cols[1].write(f"{row['Quantidade (g)']:.0f}")
         cols[2].write("" if pd.isna(row["Porcoes"]) else f"{row['Porcoes']:.2f}")
@@ -175,7 +177,7 @@ for refeicao, df in refeicoes.items():
         cols[4].write(f"{row['Proteina']:.2f}")
         cols[5].write(f"{row['Gordura']:.2f}")
         cols[6].write(f"{row['Carboidrato']:.2f}")
-        if cols[7].button("❌", key=f"{data_str}_{refeicao}_{i}"):
+        if cols[7].button("x", key=f"del_{data_str}_{refeicao}_{i}", type="secondary"):
             refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
             st.rerun()
 
