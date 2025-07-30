@@ -98,7 +98,7 @@ if not resultado.empty:
             value=100.0,
             step=10.0,
         )
-        
+
     if st.button("Adicionar alimento"):
         dados = alimento_escolhido.copy()
         fator = quantidade / 100.0
