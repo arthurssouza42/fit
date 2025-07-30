@@ -38,7 +38,8 @@ df_alimentos = carregar_tabela_alimentos()
 refeicao = st.selectbox("Selecione a refeição", ["Café da manhã", "Almoço", "Jantar", "Lanche"])
 entrada = st.text_input("Digite o nome do alimento (ex: arroz, feijao, frango):").strip().lower()
 
-resultado = df_alimentos[df_alimentos["Alimento"].str.contains(entrada, case=False, na=False)]
+# Usar pesquisa literal para evitar erro ao digitar caracteres especiais
+resultado = df_alimentos[df_alimentos["Alimento"].str.contains(entrada, case=False, na=False, regex=False)]
 
 if not resultado.empty:
     opcoes = resultado["Alimento"].unique().tolist()
