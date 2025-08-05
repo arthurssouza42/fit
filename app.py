@@ -19,25 +19,7 @@ CONFIG = {
 # Função para carregar e processar a tabela de alimentos
 @st.cache_data(ttl=CONFIG['CACHE_TTL'])
 def carregar_tabela_alimentos(csv_path: str = "alimentos.csv") -> pd.DataFrame:
-    """Carrega a tabela de alimentos com tratamento de erros.
-
-    Parameters
-    ----------
-    csv_path: str
-        Caminho para o arquivo CSV.
-        
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame com os alimentos processados.
-        
-    Raises
-    ------
-    FileNotFoundError
-        Se o arquivo CSV não for encontrado.
-    ValueError
-        Se o arquivo CSV estiver malformado.
-    """
+    """Carrega a tabela de alimentos com tratamento de erros."""
     # Validação de segurança para path traversal
     if not os.path.basename(csv_path) == csv_path or '..' in csv_path:
         raise ValueError("Caminho de arquivo inválido")
@@ -213,7 +195,10 @@ if df_alimentos.empty:
     st.error("Não foi possível carregar a base de dados de alimentos.")
     st.stop()
 
-refeicao = st.selectbox("Selecione a refeição", ["Café da manhã", "Almoço", "Jantar", "Lanche"])
+# MUDANÇA: Lista de refeições na ordem específica solicitada
+opcoes_refeicoes = ["Café da manhã", "Almoço", "Lanche da tarde", "Jantar", "Lanche noturno"]
+
+refeicao = st.selectbox("Selecione a refeição", opcoes_refeicoes)
 
 # Input com validação
 entrada = st.text_input("Digite o nome do alimento (ex: arroz, feijao, frango):").strip().lower()
@@ -308,13 +293,29 @@ if not resultado.empty:
             except Exception as e:
                 st.error(f"Erro ao adicionar alimento: {str(e)}")
 
-# Mostrar resumo
+# MUDANÇA PRINCIPAL: Mostrar resumo na ordem específica
 st.subheader(f"Resumo do dia ({data_str})")
 
+# Definir ordem específica das refeições
+ordem_refeicoes = ["Café da manhã", "Almoço", "Lanche da tarde", "Jantar", "Lanche noturno"]
+
+# Mapear emojis para cada refeição
+emojis_refeicoes = {
+    "Café da manhã": "☕",
+    "Almoço": "🍽️", 
+    "Lanche da tarde": "🍎",
+    "Jantar": "🌙",
+    "Lanche noturno": "🌃"
+}
+
 total_df = pd.DataFrame()
-for refeicao_nome, df in refeicoes.items():
-    if df.empty:
+
+# Iterar na ordem específica
+for refeicao_nome in ordem_refeicoes:
+    if refeicao_nome not in refeicoes or refeicoes[refeicao_nome].empty:
         continue
+        
+    df = refeicoes[refeicao_nome]
 
     # Calcular totais parciais
     totais_parciais = somar_nutrientes(df)
@@ -325,8 +326,9 @@ for refeicao_nome, df in refeicoes.items():
         f"**Carboidratos:** {totais_parciais['Carboidrato']:.1f} g"
     )
 
-    # Título da refeição + resumo parcial
-    st.markdown(f"🍽️ **{refeicao_nome}**\n\n{resumo_macros}")
+    # Título da refeição + resumo parcial com emoji específico
+    emoji = emojis_refeicoes.get(refeicao_nome, "🍽️")
+    st.markdown(f"{emoji} **{refeicao_nome}**\n\n{resumo_macros}")
 
     colunas = [
         "Alimento",
