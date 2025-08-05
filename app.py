@@ -3,74 +3,139 @@ import pandas as pd
 import unicodedata
 from datetime import datetime
 import os
+import uuid
+from typing import Dict, Optional, Tuple
+
+# Configurações globais
+CONFIG = {
+    'CACHE_TTL': 3600,
+    'DEFAULT_QUANTITY': 100.0,
+    'QUANTITY_STEP': 10.0,
+    'PORTION_STEP': 0.5,
+    'MAX_QUANTITY': 10000.0,
+    'MIN_QUANTITY': 0.1
+}
 
 # Função para carregar e processar a tabela de alimentos
-@st.cache_data(ttl=3600)
-def carregar_tabela_alimentos(csv_path: str = "alimentos.csv", file_mtime: float | None = None):
-    """Carrega a tabela de alimentos.
+@st.cache_data(ttl=CONFIG['CACHE_TTL'])
+def carregar_tabela_alimentos(csv_path: str = "alimentos.csv") -> pd.DataFrame:
+    """Carrega a tabela de alimentos com tratamento de erros.
 
     Parameters
     ----------
     csv_path: str
         Caminho para o arquivo CSV.
-    file_mtime: float | None
-        Momento de modificação do arquivo. Usado para invalidar o cache
-        caso o arquivo seja atualizado.
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame com os alimentos processados.
+        
+    Raises
+    ------
+    FileNotFoundError
+        Se o arquivo CSV não for encontrado.
+    ValueError
+        Se o arquivo CSV estiver malformado.
     """
-    if file_mtime is None:
-        file_mtime = os.path.getmtime(csv_path)
-
-    df = pd.read_csv(csv_path)
-    df["Alimento"] = df["Descrição dos alimentos"].apply(
-        lambda x: unicodedata.normalize("NFKD", str(x))
-        .encode("ASCII", "ignore")
-        .decode("utf-8")
-        .lower()
-    )
-    df = df[
-        [
+    # Validação de segurança para path traversal
+    if not os.path.basename(csv_path) == csv_path or '..' in csv_path:
+        raise ValueError("Caminho de arquivo inválido")
+    
+    try:
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(f"Arquivo {csv_path} não encontrado")
+            
+        df = pd.read_csv(csv_path)
+        
+        # Verificar se as colunas essenciais existem
+        required_columns = ["Descrição dos alimentos", "Energia..kcal.", "Proteína..g.", 
+                          "Lipídeos..g.", "Carboidrato..g."]
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Colunas obrigatórias ausentes: {missing_columns}")
+        
+        # Processar normalização de texto
+        df["Alimento"] = df["Descrição dos alimentos"].apply(
+            lambda x: unicodedata.normalize("NFKD", str(x))
+            .encode("ASCII", "ignore")
+            .decode("utf-8")
+            .lower()
+        )
+        
+        # Selecionar colunas
+        columns_to_select = [
             "Alimento",
             "Energia..kcal.",
             "Proteína..g.",
             "Lipídeos..g.",
             "Carboidrato..g.",
-            "gramas_por_porcao",
         ]
-    ]
-    df.columns = [
-        "Alimento",
-        "Kcal",
-        "Proteina",
-        "Gordura",
-        "Carboidrato",
-        "GramasPorPorcao",
-    ]
-    return df
+        
+        if "gramas_por_porcao" in df.columns:
+            columns_to_select.append("gramas_por_porcao")
+            
+        df = df[columns_to_select]
+        
+        # Renomear colunas
+        column_mapping = {
+            "Alimento": "Alimento",
+            "Energia..kcal.": "Kcal",
+            "Proteína..g.": "Proteina",
+            "Lipídeos..g.": "Gordura",
+            "Carboidrato..g.": "Carboidrato",
+        }
+        
+        if "gramas_por_porcao" in df.columns:
+            column_mapping["gramas_por_porcao"] = "GramasPorPorcao"
+            
+        df = df.rename(columns=column_mapping)
+        
+        # Limpar dados numéricos
+        numeric_columns = ["Kcal", "Proteina", "Gordura", "Carboidrato"]
+        if "GramasPorPorcao" in df.columns:
+            numeric_columns.append("GramasPorPorcao")
+            
+        for col in numeric_columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            df[col] = df[col].fillna(0)
+        
+        return df
+        
+    except Exception as e:
+        st.error(f"Erro ao carregar arquivo de alimentos: {str(e)}")
+        return pd.DataFrame()
+
+# Função para validar entrada numérica
+def validar_quantidade(quantidade: float) -> Tuple[bool, str]:
+    """Valida se a quantidade está dentro dos limites aceitáveis."""
+    if quantidade < CONFIG['MIN_QUANTITY']:
+        return False, f"Quantidade deve ser maior que {CONFIG['MIN_QUANTITY']}g"
+    if quantidade > CONFIG['MAX_QUANTITY']:
+        return False, f"Quantidade deve ser menor que {CONFIG['MAX_QUANTITY']}g"
+    return True, ""
 
 # Função para somar os nutrientes de um DataFrame
-def somar_nutrientes(df):
-    return df[["Kcal", "Proteina", "Gordura", "Carboidrato"]].sum()
+def somar_nutrientes(df: pd.DataFrame) -> pd.Series:
+    """Soma os nutrientes de um DataFrame com tratamento de erros."""
+    if df.empty:
+        return pd.Series({"Kcal": 0, "Proteina": 0, "Gordura": 0, "Carboidrato": 0})
+    
+    nutrient_columns = ["Kcal", "Proteina", "Gordura", "Carboidrato"]
+    available_columns = [col for col in nutrient_columns if col in df.columns]
+    
+    if not available_columns:
+        return pd.Series({"Kcal": 0, "Proteina": 0, "Gordura": 0, "Carboidrato": 0})
+    
+    return df[available_columns].sum()
 
 # Caminho para armazenar os registros permanentemente
 REGISTRO_PATH = "registros.csv"
 
-
-def carregar_registros(path: str = REGISTRO_PATH) -> dict:
-    """Carrega registros salvos em disco para o formato usado em sessao."""
-    if not os.path.exists(path):
-        return {}
-
-    df = pd.read_csv(path)
-    registros: dict[str, dict[str, pd.DataFrame]] = {}
-    for (dia, refeicao), grupo in df.groupby(["Data", "Refeicao"]):
-        grupo = grupo.drop(columns=["Data", "Refeicao"]).reset_index(drop=True)
-        registros.setdefault(dia, {})[refeicao] = grupo
-    return registros
-
-
-def salvar_registros(registros: dict[str, dict[str, pd.DataFrame]], path: str = REGISTRO_PATH) -> None:
-    """Salva todos os registros da sessao em disco."""
+def preparar_dados_para_export(registros: Dict[str, Dict[str, pd.DataFrame]]) -> pd.DataFrame:
+    """Função unificada para preparar dados para exportação."""
     df_export = pd.DataFrame()
+    
     for dia, dados_refeicoes in registros.items():
         for refeicao, df in dados_refeicoes.items():
             if df.empty:
@@ -79,13 +144,49 @@ def salvar_registros(registros: dict[str, dict[str, pd.DataFrame]], path: str = 
             df_temp["Data"] = dia
             df_temp["Refeicao"] = refeicao
             df_export = pd.concat([df_export, df_temp], ignore_index=True)
+    
+    return df_export
 
-    if df_export.empty:
-        if os.path.exists(path):
-            os.remove(path)
-    else:
-        df_export.to_csv(path, index=False)
+def carregar_registros(path: str = REGISTRO_PATH) -> Dict[str, Dict[str, pd.DataFrame]]:
+    """Carrega registros salvos em disco para o formato usado em sessão."""
+    if not os.path.exists(path):
+        return {}
+
+    try:
+        df = pd.read_csv(path)
+        registros: Dict[str, Dict[str, pd.DataFrame]] = {}
         
+        for (dia, refeicao), grupo in df.groupby(["Data", "Refeicao"]):
+            grupo = grupo.drop(columns=["Data", "Refeicao"]).reset_index(drop=True)
+            registros.setdefault(dia, {})[refeicao] = grupo
+            
+        return registros
+        
+    except Exception as e:
+        st.error(f"Erro ao carregar registros: {str(e)}")
+        return {}
+
+def salvar_registros(registros: Dict[str, Dict[str, pd.DataFrame]], path: str = REGISTRO_PATH) -> bool:
+    """Salva todos os registros da sessão em disco."""
+    try:
+        df_export = preparar_dados_para_export(registros)
+        
+        if df_export.empty:
+            if os.path.exists(path):
+                os.remove(path)
+        else:
+            df_export.to_csv(path, index=False)
+        return True
+        
+    except Exception as e:
+        st.error(f"Erro ao salvar registros: {str(e)}")
+        return False
+
+# Função para gerar ID único para cada item
+def gerar_id_unico() -> str:
+    """Gera um ID único para cada item de alimento."""
+    return str(uuid.uuid4())[:8]
+
 # Início do app
 st.title("📒 Registro Alimentar Diário")
 
@@ -106,22 +207,43 @@ refeicoes = st.session_state.refeicoes_por_dia[data_str]
 
 # Carregar base de dados
 csv_path = "alimentos.csv"
-df_alimentos = carregar_tabela_alimentos(csv_path, os.path.getmtime(csv_path))
+df_alimentos = carregar_tabela_alimentos(csv_path)
+
+if df_alimentos.empty:
+    st.error("Não foi possível carregar a base de dados de alimentos.")
+    st.stop()
 
 refeicao = st.selectbox("Selecione a refeição", ["Café da manhã", "Almoço", "Jantar", "Lanche"])
+
+# Input com validação
 entrada = st.text_input("Digite o nome do alimento (ex: arroz, feijao, frango):").strip().lower()
 
-# Usar pesquisa literal para evitar erro ao digitar caracteres especiais
-resultado = df_alimentos[df_alimentos["Alimento"].str.contains(entrada, case=False, na=False, regex=False)]
+# Sanitizar entrada para evitar problemas
+entrada_sanitizada = ''.join(c for c in entrada if c.isalnum() or c.isspace())
+
+if entrada_sanitizada:
+    try:
+        resultado = df_alimentos[df_alimentos["Alimento"].str.contains(
+            entrada_sanitizada, case=False, na=False, regex=False)]
+    except Exception as e:
+        st.error(f"Erro na busca: {str(e)}")
+        resultado = pd.DataFrame()
+else:
+    resultado = pd.DataFrame()
 
 if not resultado.empty:
     opcoes = resultado["Alimento"].unique().tolist()
     alimento_selecionado = st.selectbox("Selecione o alimento desejado:", opcoes)
     alimento_escolhido = resultado[resultado["Alimento"] == alimento_selecionado].iloc[0]
 
-    gramas_por_porcao = alimento_escolhido.get("GramasPorPorcao")
+    # Verificar se tem informação de porções
+    tem_porcoes = "GramasPorPorcao" in alimento_escolhido and pd.notna(alimento_escolhido.get("GramasPorPorcao"))
+    gramas_por_porcao = alimento_escolhido.get("GramasPorPorcao", None) if tem_porcoes else None
+    
     porcoes = None
-    if pd.notna(gramas_por_porcao):
+    quantidade = CONFIG['DEFAULT_QUANTITY']
+    
+    if tem_porcoes and gramas_por_porcao > 0:
         unidade = st.radio(
             "Escolha a unidade",
             ["gramas", "porções"],
@@ -130,52 +252,67 @@ if not resultado.empty:
         if unidade == "gramas":
             quantidade = st.number_input(
                 "Quantidade consumida (g)",
-                min_value=0.0,
+                min_value=CONFIG['MIN_QUANTITY'],
+                max_value=CONFIG['MAX_QUANTITY'],
                 value=float(gramas_por_porcao),
-                step=10.0,
+                step=CONFIG['QUANTITY_STEP'],
             )
             porcoes = quantidade / gramas_por_porcao if gramas_por_porcao else None
         else:
             porcoes = st.number_input(
                 f"Porções ({gramas_por_porcao:g} g)",
-                min_value=0.0,
+                min_value=CONFIG['MIN_QUANTITY'] / gramas_por_porcao,
+                max_value=CONFIG['MAX_QUANTITY'] / gramas_por_porcao,
                 value=1.0,
-                step=0.5,
+                step=CONFIG['PORTION_STEP'],
             )
             quantidade = porcoes * gramas_por_porcao
     else:
         quantidade = st.number_input(
             "Quantidade consumida (g)",
-            min_value=0.0,
-            value=100.0,
-            step=10.0,
+            min_value=CONFIG['MIN_QUANTITY'],
+            max_value=CONFIG['MAX_QUANTITY'],
+            value=CONFIG['DEFAULT_QUANTITY'],
+            step=CONFIG['QUANTITY_STEP'],
         )
 
-    if st.button("Adicionar alimento"):
-        dados = alimento_escolhido.copy()
-        fator = quantidade / 100.0
-        dados[["Kcal", "Proteina", "Gordura", "Carboidrato"]] *= fator
-        dados["Quantidade (g)"] = quantidade
-        dados["Porcoes"] = porcoes
-        dados["Horário"] = datetime.now().strftime("%H:%M")
-        dados["Data"] = data_str
-        dados["Refeicao"] = refeicao
+    # Validar quantidade
+    quantidade_valida, mensagem_erro = validar_quantidade(quantidade)
+    if not quantidade_valida:
+        st.error(mensagem_erro)
+    else:
+        if st.button("Adicionar alimento"):
+            try:
+                dados = alimento_escolhido.copy()
+                fator = quantidade / 100.0
+                dados[["Kcal", "Proteina", "Gordura", "Carboidrato"]] *= fator
+                dados["Quantidade (g)"] = quantidade
+                dados["Porcoes"] = porcoes
+                dados["Horário"] = datetime.now().strftime("%H:%M")
+                dados["Data"] = data_str
+                dados["Refeicao"] = refeicao
+                dados["ID"] = gerar_id_unico()
 
-        if refeicao not in refeicoes:
-            refeicoes[refeicao] = pd.DataFrame()
+                if refeicao not in refeicoes:
+                    refeicoes[refeicao] = pd.DataFrame()
 
-        refeicoes[refeicao] = pd.concat(
-            [refeicoes[refeicao], pd.DataFrame([dados])],
-            ignore_index=True
-        )
-        salvar_registros(st.session_state.refeicoes_por_dia)
-        st.rerun()
+                novo_item_df = pd.DataFrame([dados])
+                refeicoes[refeicao] = pd.concat([refeicoes[refeicao], novo_item_df], ignore_index=True)
+                
+                if salvar_registros(st.session_state.refeicoes_por_dia):
+                    st.success("Alimento adicionado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Erro ao salvar. Tente novamente.")
+                    
+            except Exception as e:
+                st.error(f"Erro ao adicionar alimento: {str(e)}")
 
 # Mostrar resumo
 st.subheader(f"Resumo do dia ({data_str})")
 
 total_df = pd.DataFrame()
-for refeicao, df in refeicoes.items():
+for refeicao_nome, df in refeicoes.items():
     if df.empty:
         continue
 
@@ -189,7 +326,7 @@ for refeicao, df in refeicoes.items():
     )
 
     # Título da refeição + resumo parcial
-    st.markdown(f"🍽️ **{refeicao}**\n\n{resumo_macros}")
+    st.markdown(f"🍽️ **{refeicao_nome}**\n\n{resumo_macros}")
 
     colunas = [
         "Alimento",
@@ -200,46 +337,73 @@ for refeicao, df in refeicoes.items():
         "Gordura",
         "Carboidrato",
     ]
-    if "Porcoes" not in df:
+    
+    # Garantir que as colunas existem
+    if "Porcoes" not in df.columns:
         df["Porcoes"] = pd.NA
-    df_exibir = df[colunas].copy().reset_index(drop=True)
+    if "ID" not in df.columns:
+        df["ID"] = [gerar_id_unico() for _ in range(len(df))]
+        
+    df_exibir = df[colunas + ["ID"]].copy().reset_index(drop=True)
 
     for i, row in df_exibir.iterrows():
-        cols = st.columns([5, 2, 2, 2, 2, 2, 2, 0.5])
+        cols = st.columns([5, 2, 2, 2, 2, 2, 2, 1])
         cols[0].write(row["Alimento"])
         cols[1].write(f"{row['Quantidade (g)']:.0f}")
         cols[2].write("" if pd.isna(row["Porcoes"]) else f"{row['Porcoes']:.2f}")
-        cols[3].write(f"{row['Kcal']:.2f}")
-        cols[4].write(f"{row['Proteina']:.2f}")
-        cols[5].write(f"{row['Gordura']:.2f}")
-        cols[6].write(f"{row['Carboidrato']:.2f}")
-        if cols[7].button("x", key=f"del_{data_str}_{refeicao}_{i}", type="secondary"):
-            refeicoes[refeicao] = df.drop(index=i).reset_index(drop=True)
-            st.rerun()
+        cols[3].write(f"{row['Kcal']:.1f}")
+        cols[4].write(f"{row['Proteina']:.1f}")
+        cols[5].write(f"{row['Gordura']:.1f}")
+        cols[6].write(f"{row['Carboidrato']:.1f}")
+        
+        # Usar ID único para o botão de deleção
+        item_id = row.get("ID", f"{data_str}_{refeicao_nome}_{i}")
+        if cols[7].button("🗑️", key=f"del_{item_id}", type="secondary", help="Deletar item"):
+            # Confirmar deleção
+            if f"confirm_delete_{item_id}" not in st.session_state:
+                st.session_state[f"confirm_delete_{item_id}"] = True
+                st.warning("Clique novamente para confirmar a exclusão")
+                st.rerun()
+            else:
+                try:
+                    refeicoes[refeicao_nome] = df.drop(index=i).reset_index(drop=True)
+                    salvar_registros(st.session_state.refeicoes_por_dia)
+                    del st.session_state[f"confirm_delete_{item_id}"]
+                    st.success("Item removido!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao remover item: {str(e)}")
 
     total_df = pd.concat([total_df, df], ignore_index=True)
 
 # Totais do dia
 if not total_df.empty:
-    st.markdown("### Totais do dia")
+    st.markdown("### 📊 Totais do dia")
     totais = somar_nutrientes(total_df)
-    st.write(f"**Calorias:** {totais['Kcal']:.0f} kcal | **Proteínas:** {totais['Proteina']:.1f} g | **Gorduras:** {totais['Gordura']:.1f} g | **Carboidratos:** {totais['Carboidrato']:.1f} g")
+    
+    # Mostrar em formato mais visual
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Calorias", f"{totais['Kcal']:.0f} kcal")
+    with col2:
+        st.metric("Proteínas", f"{totais['Proteina']:.1f} g")
+    with col3:
+        st.metric("Gorduras", f"{totais['Gordura']:.1f} g")
+    with col4:
+        st.metric("Carboidratos", f"{totais['Carboidrato']:.1f} g")
 
 # Exportar todos os dados
 st.subheader("📦 Exportar todos os registros")
 
-df_export = pd.DataFrame()
-for dia, dados_refeicoes in st.session_state.refeicoes_por_dia.items():
-    for refeicao, df in dados_refeicoes.items():
-        if not df.empty:
-            df_temp = df.copy()
-            df_temp["Data"] = dia
-            df_temp["Refeicao"] = refeicao
-            df_export = pd.concat([df_export, df_temp], ignore_index=True)
+df_export = preparar_dados_para_export(st.session_state.refeicoes_por_dia)
 
 if not df_export.empty:
     st.download_button(
         label="📁 Baixar CSV completo",
         data=df_export.to_csv(index=False).encode("utf-8"),
-        file_name="registro_alimentar_completo.csv"
+        file_name=f"registro_alimentar_completo_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv"
     )
+    st.info(f"Total de {len(df_export)} registros disponíveis para download")
+else:
+    st.info("Nenhum registro encontrado para exportar")
